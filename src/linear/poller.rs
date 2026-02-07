@@ -6,7 +6,7 @@ use tracing::{error, info, warn};
 
 use crate::db;
 use crate::linear::client::LinearClient;
-use crate::sync::linear_to_discord::sync_linear_to_discord;
+use crate::sync::linear_to_discord::{sync_linear_comments_to_discord, sync_linear_to_discord};
 
 pub async fn run_poller(
     http: Arc<Http>,
@@ -54,38 +54,57 @@ pub async fn run_poller(
                         };
 
                         // Check if status actually changed from what we last posted
-                        match db::get_cached_status(&pool, &issue.id).await {
-                            Ok(Some(cached)) if cached == issue.status_name => continue,
-                            Ok(_) => {}
+                        let status_changed = match db::get_cached_status(&pool, &issue.id).await {
+                            Ok(Some(cached)) if cached == issue.status_name => false,
+                            Ok(_) => true,
                             Err(e) => {
                                 warn!(
                                     issue_id = %issue.id,
                                     error = %e,
                                     "Failed to check status cache"
                                 );
-                                continue;
+                                false
+                            }
+                        };
+
+                        if status_changed {
+                            info!(
+                                identifier = %issue.identifier,
+                                status = %issue.status_name,
+                                "Status change detected"
+                            );
+
+                            if let Err(e) = sync_linear_to_discord(
+                                &http,
+                                &pool,
+                                &issue.id,
+                                &issue.identifier,
+                                &issue.status_name,
+                            )
+                            .await
+                            {
+                                error!(
+                                    identifier = %issue.identifier,
+                                    error = %e,
+                                    "Failed to sync status to Discord"
+                                );
                             }
                         }
 
-                        info!(
-                            identifier = %issue.identifier,
-                            status = %issue.status_name,
-                            "Status change detected"
-                        );
-
-                        if let Err(e) = sync_linear_to_discord(
+                        // Sync any new comments for this issue
+                        if let Err(e) = sync_linear_comments_to_discord(
                             &http,
                             &pool,
+                            &linear,
                             &issue.id,
                             &issue.identifier,
-                            &issue.status_name,
                         )
                         .await
                         {
                             error!(
                                 identifier = %issue.identifier,
                                 error = %e,
-                                "Failed to sync status to Discord"
+                                "Failed to sync comments to Discord"
                             );
                         }
                     }

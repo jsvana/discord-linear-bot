@@ -102,6 +102,37 @@ pub async fn upsert_cached_status(
     Ok(())
 }
 
+pub async fn is_comment_synced(
+    pool: &SqlitePool,
+    linear_comment_id: &str,
+) -> Result<bool, sqlx::Error> {
+    let row: Option<(i32,)> = sqlx::query_as(
+        "SELECT 1 FROM synced_comments WHERE linear_comment_id = ?",
+    )
+    .bind(linear_comment_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.is_some())
+}
+
+pub async fn insert_synced_comment(
+    pool: &SqlitePool,
+    linear_comment_id: &str,
+    linear_issue_id: &str,
+    discord_message_id: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO synced_comments (linear_comment_id, linear_issue_id, discord_message_id)
+         VALUES (?, ?, ?)",
+    )
+    .bind(linear_comment_id)
+    .bind(linear_issue_id)
+    .bind(discord_message_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 pub async fn get_backfill_state(
     pool: &SqlitePool,
     channel_id: &str,

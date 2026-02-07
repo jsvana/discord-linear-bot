@@ -20,6 +20,14 @@ pub struct LinearIssue {
 }
 
 #[derive(Debug)]
+pub struct LinearComment {
+    pub id: String,
+    pub body: String,
+    pub created_at: String,
+    pub author_name: String,
+}
+
+#[derive(Debug)]
 pub struct LinearIssueStatus {
     pub id: String,
     pub identifier: String,
@@ -158,6 +166,61 @@ impl LinearClient {
                 identifier,
                 status_name,
                 updated_at,
+            });
+        }
+
+        Ok(results)
+    }
+
+    /// Fetch comments for a specific issue, sorted by creation time.
+    pub async fn get_issue_comments(
+        &self,
+        issue_id: &str,
+    ) -> Result<Vec<LinearComment>, AppError> {
+        let query = r#"
+            query IssueComments($issueId: ID!) {
+                issue(id: $issueId) {
+                    comments(first: 100, orderBy: createdAt) {
+                        nodes {
+                            id
+                            body
+                            createdAt
+                            user {
+                                displayName
+                            }
+                        }
+                    }
+                }
+            }
+        "#;
+
+        let variables = json!({
+            "issueId": issue_id,
+        });
+
+        let data = self.execute(query, variables).await?;
+        let nodes = data["issue"]["comments"]["nodes"]
+            .as_array()
+            .ok_or_else(|| AppError::LinearApi("Missing issue.comments.nodes".into()))?;
+
+        let mut results = Vec::new();
+        for node in nodes {
+            let id = node["id"].as_str().unwrap_or_default().to_string();
+            let body = node["body"].as_str().unwrap_or_default().to_string();
+            let created_at = node["createdAt"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+            let author_name = node["user"]["displayName"]
+                .as_str()
+                .unwrap_or("Unknown")
+                .to_string();
+
+            results.push(LinearComment {
+                id,
+                body,
+                created_at,
+                author_name,
             });
         }
 

@@ -47,6 +47,9 @@ async fn main() -> anyhow::Result<()> {
     sqlx::raw_sql(include_str!("../migrations/001_initial_schema.sql"))
         .execute(&pool)
         .await?;
+    sqlx::raw_sql(include_str!("../migrations/002_comment_sync.sql"))
+        .execute(&pool)
+        .await?;
 
     info!("Database initialized");
 
