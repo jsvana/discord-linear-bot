@@ -29,7 +29,12 @@ async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
 
     let config = Config::from_env()?;
-    info!("Configuration loaded");
+    info!(
+        channels = config.channels.len(),
+        teams = config.unique_team_ids().len(),
+        guilds = config.unique_guild_ids().len(),
+        "Configuration loaded"
+    );
 
     // SQLite pool + migrations
     let connect_options = SqliteConnectOptions::from_str(&config.database_url)?
@@ -45,10 +50,7 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Database initialized");
 
-    let linear_client = LinearClient::new(
-        config.linear_api_key.clone(),
-        config.linear_team_id.clone(),
-    );
+    let linear_client = LinearClient::new(config.linear_api_key.clone());
 
     let app_state = Arc::new(AppState {
         config: config.clone(),
@@ -78,11 +80,13 @@ async fn main() -> anyhow::Result<()> {
         error!(error = %e, "Backfill failed, continuing with live sync");
     }
 
-    // Spawn Linear status poller
+    // Spawn Linear status poller for all teams
+    let team_ids = config.unique_team_ids();
     let poller_handle = tokio::spawn(linear::poller::run_poller(
         discord_http,
         pool,
         linear_client,
+        team_ids,
         config.poll_interval_secs,
     ));
 

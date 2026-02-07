@@ -45,21 +45,23 @@ impl EventHandler for Handler {
             None => return,
         };
 
-        if !state.config.is_monitored_channel(parent_id) {
-            return;
-        }
+        let channel_config = match state.config.channel_config(parent_id) {
+            Some(c) => c,
+            None => return,
+        };
 
         info!(
             thread_id = %thread.id,
             thread_name = %thread.name,
             parent_id,
+            channel_type = %channel_config.channel_type,
             "New forum post detected"
         );
 
         if let Err(e) = sync_discord_to_linear(
             &ctx.http,
             &state.pool,
-            &state.config,
+            channel_config,
             &state.linear_client,
             &thread,
         )

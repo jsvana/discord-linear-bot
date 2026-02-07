@@ -9,7 +9,6 @@ use crate::error::AppError;
 pub struct LinearClient {
     client: Client,
     api_key: String,
-    team_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -42,16 +41,16 @@ pub struct UploadHeader {
 }
 
 impl LinearClient {
-    pub fn new(api_key: String, team_id: String) -> Self {
+    pub fn new(api_key: String) -> Self {
         Self {
             client: Client::new(),
             api_key,
-            team_id,
         }
     }
 
     pub async fn create_issue(
         &self,
+        team_id: &str,
         title: &str,
         description: &str,
         label_ids: &[String],
@@ -72,7 +71,7 @@ impl LinearClient {
 
         let variables = json!({
             "input": {
-                "teamId": self.team_id,
+                "teamId": team_id,
                 "title": title,
                 "description": description,
                 "labelIds": label_ids,
@@ -102,10 +101,10 @@ impl LinearClient {
         })
     }
 
-    /// Fetch issues updated since `since` (ISO 8601 timestamp).
-    /// Returns issues with their current status name.
+    /// Fetch issues updated since `since` (ISO 8601 timestamp) for a specific team.
     pub async fn get_updated_issues(
         &self,
+        team_id: &str,
         since: &str,
     ) -> Result<Vec<LinearIssueStatus>, AppError> {
         let query = r#"
@@ -130,7 +129,7 @@ impl LinearClient {
         "#;
 
         let variables = json!({
-            "teamId": self.team_id,
+            "teamId": team_id,
             "since": since,
         });
 
@@ -161,30 +160,6 @@ impl LinearClient {
         }
 
         Ok(results)
-    }
-
-    pub async fn update_issue_description(
-        &self,
-        issue_id: &str,
-        description: &str,
-    ) -> Result<(), AppError> {
-        let query = r#"
-            mutation UpdateIssue($id: String!, $input: IssueUpdateInput!) {
-                issueUpdate(id: $id, input: $input) {
-                    success
-                }
-            }
-        "#;
-
-        let variables = json!({
-            "id": issue_id,
-            "input": {
-                "description": description,
-            }
-        });
-
-        self.execute(query, variables).await?;
-        Ok(())
     }
 
     pub async fn request_file_upload(

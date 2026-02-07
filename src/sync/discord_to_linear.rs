@@ -2,7 +2,7 @@ use serenity::all::{ChannelId, GuildChannel, Http};
 use sqlx::SqlitePool;
 use tracing::{info, warn};
 
-use crate::config::Config;
+use crate::config::ChannelConfig;
 use crate::db;
 use crate::error::AppError;
 use crate::linear::client::LinearClient;
@@ -10,7 +10,7 @@ use crate::linear::client::LinearClient;
 pub async fn sync_discord_to_linear(
     http: &Http,
     pool: &SqlitePool,
-    config: &Config,
+    channel_config: &ChannelConfig,
     linear: &LinearClient,
     thread: &GuildChannel,
 ) -> Result<(), AppError> {
@@ -29,10 +29,6 @@ pub async fn sync_discord_to_linear(
         .parent_id
         .ok_or_else(|| AppError::Internal("Thread has no parent channel".into()))?;
 
-    let channel_type = config
-        .channel_type(parent_id.get())
-        .ok_or_else(|| AppError::Internal("Thread parent is not a monitored channel".into()))?;
-
     // Fetch first message with retry — race condition where message isn't available yet
     let first_message = fetch_first_message_with_retry(http, thread.id).await;
 
@@ -41,13 +37,12 @@ pub async fn sync_discord_to_linear(
         None => "(No message content available)".to_string(),
     };
 
-    // Build label list
-    let mut label_ids = vec![config.primary_label_id(channel_type).to_string()];
+    // Build label list: primary label + any mapped forum tags
+    let mut label_ids = vec![channel_config.linear_label_id.clone()];
 
-    // Map forum tags to Linear labels
     for tag_id in &thread.applied_tags {
         let tag_str = tag_id.to_string();
-        if let Some(linear_label_id) = config.tag_label_map.get(&tag_str) {
+        if let Some(linear_label_id) = channel_config.tag_label_map.get(&tag_str) {
             label_ids.push(linear_label_id.clone());
         }
     }
@@ -74,7 +69,7 @@ pub async fn sync_discord_to_linear(
     // Build description
     let thread_url = format!(
         "https://discord.com/channels/{}/{}/{}",
-        config.guild_id, parent_id, thread.id
+        channel_config.guild_id, parent_id, thread.id
     );
 
     let mut description = format!("{message_body}\n\n---\n[Discord Thread]({thread_url})");
@@ -83,18 +78,28 @@ pub async fn sync_discord_to_linear(
         description.push_str(&attachment_links.join("\n"));
     }
 
-    // Create Linear issue
+    // Create Linear issue in the configured team
     let title = thread.name.clone();
-    let issue = linear.create_issue(&title, &description, &label_ids).await?;
+    let issue = linear
+        .create_issue(&channel_config.linear_team_id, &title, &description, &label_ids)
+        .await?;
 
     info!(
         thread_id,
         identifier = %issue.identifier,
+        team_id = %channel_config.linear_team_id,
         "Created Linear issue from Discord thread"
     );
 
     // Store mapping
-    db::create_mapping(pool, &thread_id, &issue.id, &issue.identifier, channel_type).await?;
+    db::create_mapping(
+        pool,
+        &thread_id,
+        &issue.id,
+        &issue.identifier,
+        &channel_config.channel_type,
+    )
+    .await?;
 
     // Post confirmation in Discord thread
     let reply = format!(
