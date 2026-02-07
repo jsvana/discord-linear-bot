@@ -54,6 +54,7 @@ impl LinearClient {
         title: &str,
         description: &str,
         label_ids: &[String],
+        project_id: &str,
     ) -> Result<LinearIssue, AppError> {
         let query = r#"
             mutation CreateIssue($input: IssueCreateInput!) {
@@ -75,6 +76,7 @@ impl LinearClient {
                 "title": title,
                 "description": description,
                 "labelIds": label_ids,
+                "projectId": project_id,
             }
         });
 

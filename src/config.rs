@@ -28,6 +28,8 @@ pub struct ChannelConfig {
     pub linear_team_id: String,
     /// Primary Linear label ID for this channel type
     pub linear_label_id: String,
+    /// Linear project ID to assign issues to
+    pub linear_project_id: String,
     /// Optional: map Discord forum tag IDs to additional Linear label IDs
     #[serde(default)]
     pub tag_label_map: HashMap<String, String>,

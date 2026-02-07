@@ -81,7 +81,7 @@ pub async fn sync_discord_to_linear(
     // Create Linear issue in the configured team
     let title = thread.name.clone();
     let issue = linear
-        .create_issue(&channel_config.linear_team_id, &title, &description, &label_ids)
+        .create_issue(&channel_config.linear_team_id, &title, &description, &label_ids, &channel_config.linear_project_id)
         .await?;
 
     info!(

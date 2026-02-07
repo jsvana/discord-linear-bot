@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(linear auth whoami:*)",
+      "Bash(linear issue list:*)",
+      "Bash(linear team:*)"
+    ]
+  }
+}
