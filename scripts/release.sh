@@ -11,8 +11,13 @@ if [ $# -ne 1 ]; then
     exit 1
 fi
 
-VERSION="$1"
+VERSION="${1#v}"
 TAG="v${VERSION}"
+
+if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "Error: version must be in semver format (e.g. 0.2.0), got: $VERSION"
+    exit 1
+fi
 REPO="jsvana/discord-linear-bot"
 FILENAME="discord-linear-bot-${TAG}-x86_64-linux.tar.gz"
 
