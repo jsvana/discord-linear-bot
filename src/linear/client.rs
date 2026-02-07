@@ -108,7 +108,7 @@ impl LinearClient {
         since: &str,
     ) -> Result<Vec<LinearIssueStatus>, AppError> {
         let query = r#"
-            query UpdatedIssues($teamId: String!, $since: DateTime!) {
+            query UpdatedIssues($teamId: ID!, $since: DateTimeOrDuration!) {
                 issues(
                     filter: {
                         team: { id: { eq: $teamId } }

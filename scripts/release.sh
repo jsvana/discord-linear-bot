@@ -3,6 +3,7 @@ set -euo pipefail
 
 # Usage: ./scripts/release.sh 0.2.0
 # Tags the current commit and pushes, triggering the GitHub Actions release build.
+# Waits for the release to complete and prints the version + SHA256 checksum.
 
 if [ $# -ne 1 ]; then
     echo "Usage: $0 <version>"
@@ -12,6 +13,8 @@ fi
 
 VERSION="$1"
 TAG="v${VERSION}"
+REPO="jsvana/discord-linear-bot"
+FILENAME="discord-linear-bot-${TAG}-x86_64-linux.tar.gz"
 
 # Verify we're on main and clean
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
@@ -36,8 +39,34 @@ git tag "$TAG"
 git push origin "$TAG"
 
 echo ""
-echo "Release $TAG triggered. Watch the build at:"
-echo "  https://github.com/jsvana/discord-linear-bot/actions"
+echo "Waiting for release build to complete..."
+
+# Poll until the release exists (check every 15s, timeout after 15 minutes)
+MAX_ATTEMPTS=60
+for i in $(seq 1 $MAX_ATTEMPTS); do
+    if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+        break
+    fi
+    if [ "$i" -eq "$MAX_ATTEMPTS" ]; then
+        echo "Timed out waiting for release. Check manually:"
+        echo "  https://github.com/$REPO/actions"
+        exit 1
+    fi
+    printf "  waiting... (%d/%d)\r" "$i" "$MAX_ATTEMPTS"
+    sleep 15
+done
+
 echo ""
-echo "Once complete, update Ansible:"
+echo "Release $TAG is available. Downloading binary..."
+
+TMPDIR=$(mktemp -d)
+trap 'rm -rf "$TMPDIR"' EXIT
+
+gh release download "$TAG" --repo "$REPO" --pattern "$FILENAME" --dir "$TMPDIR"
+
+CHECKSUM=$(shasum -a 256 "$TMPDIR/$FILENAME" | awk '{print $1}')
+
+echo ""
+echo "=== Ansible values ==="
 echo "  discord_linear_bot_version: \"$VERSION\""
+echo "  discord_linear_bot_checksum: \"sha256:$CHECKSUM\""
