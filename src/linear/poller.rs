@@ -91,27 +91,41 @@ pub async fn run_poller(
                             }
                         }
 
-                        // Sync any new comments for this issue
-                        if let Err(e) = sync_linear_comments_to_discord(
-                            &http,
-                            &pool,
-                            &linear,
-                            &issue.id,
-                            &issue.identifier,
-                        )
-                        .await
-                        {
-                            error!(
-                                identifier = %issue.identifier,
-                                error = %e,
-                                "Failed to sync comments to Discord"
-                            );
-                        }
+                        // Comment sync for all tracked issues happens below,
+                        // outside the get_updated_issues loop.
                     }
                 }
                 Err(e) => {
                     error!(team_id, error = %e, "Failed to poll Linear for updates");
                 }
+            }
+        }
+
+        // Sync comments for ALL tracked issues, not just ones with updatedAt changes.
+        // Adding a comment in Linear may not bump the issue's updatedAt field,
+        // so we need to check comments independently.
+        match db::get_all_tracked_issues(&pool).await {
+            Ok(mappings) => {
+                for mapping in &mappings {
+                    if let Err(e) = sync_linear_comments_to_discord(
+                        &http,
+                        &pool,
+                        &linear,
+                        &mapping.linear_issue_id,
+                        &mapping.linear_identifier,
+                    )
+                    .await
+                    {
+                        error!(
+                            identifier = %mapping.linear_identifier,
+                            error = %e,
+                            "Failed to sync comments to Discord"
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                error!(error = %e, "Failed to fetch tracked issues for comment sync");
             }
         }
 

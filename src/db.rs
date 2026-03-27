@@ -133,6 +133,17 @@ pub async fn insert_synced_comment(
     Ok(())
 }
 
+pub async fn get_all_tracked_issues(
+    pool: &SqlitePool,
+) -> Result<Vec<SyncMapping>, sqlx::Error> {
+    sqlx::query_as::<_, SyncMapping>(
+        "SELECT id, discord_thread_id, linear_issue_id, linear_identifier, channel_type, created_at
+         FROM sync_mappings",
+    )
+    .fetch_all(pool)
+    .await
+}
+
 pub async fn get_backfill_state(
     pool: &SqlitePool,
     channel_id: &str,
