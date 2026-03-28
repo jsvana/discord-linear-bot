@@ -178,7 +178,7 @@ impl LinearClient {
         issue_id: &str,
     ) -> Result<Vec<LinearComment>, AppError> {
         let query = r#"
-            query IssueComments($issueId: ID!) {
+            query IssueComments($issueId: String!) {
                 issue(id: $issueId) {
                     comments(first: 100, orderBy: createdAt) {
                         nodes {
