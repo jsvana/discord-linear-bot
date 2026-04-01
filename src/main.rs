@@ -91,6 +91,7 @@ async fn main() -> anyhow::Result<()> {
         linear_client,
         team_ids,
         config.poll_interval_secs,
+        config.comment_poll_interval_secs,
     ));
 
     // Run Discord gateway + poller concurrently

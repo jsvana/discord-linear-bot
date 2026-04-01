@@ -42,6 +42,7 @@ pub struct Config {
     pub channels: Vec<ChannelConfig>,
     pub database_url: String,
     pub poll_interval_secs: u64,
+    pub comment_poll_interval_secs: u64,
 }
 
 impl Config {
@@ -63,6 +64,10 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(30),
+            comment_poll_interval_secs: env::var("COMMENT_POLL_INTERVAL_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(300),
         })
     }
 

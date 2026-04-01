@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Instant;
 
 use serenity::http::Http;
 use sqlx::SqlitePool;
@@ -14,11 +15,15 @@ pub async fn run_poller(
     linear: LinearClient,
     team_ids: Vec<String>,
     interval_secs: u64,
+    comment_interval_secs: u64,
 ) {
     let mut last_poll = chrono::Utc::now().to_rfc3339();
+    let mut last_comment_sync = Instant::now();
+    let comment_interval = std::time::Duration::from_secs(comment_interval_secs);
 
     info!(
         interval_secs,
+        comment_interval_secs,
         teams = team_ids.len(),
         "Starting Linear status poller"
     );
@@ -90,9 +95,6 @@ pub async fn run_poller(
                                 );
                             }
                         }
-
-                        // Comment sync for all tracked issues happens below,
-                        // outside the get_updated_issues loop.
                     }
                 }
                 Err(e) => {
@@ -101,31 +103,35 @@ pub async fn run_poller(
             }
         }
 
-        // Sync comments for ALL tracked issues, not just ones with updatedAt changes.
+        // Sync comments on a separate, longer interval to avoid rate limits.
         // Adding a comment in Linear may not bump the issue's updatedAt field,
-        // so we need to check comments independently.
-        match db::get_all_tracked_issues(&pool).await {
-            Ok(mappings) => {
-                for mapping in &mappings {
-                    if let Err(e) = sync_linear_comments_to_discord(
-                        &http,
-                        &pool,
-                        &linear,
-                        &mapping.linear_issue_id,
-                        &mapping.linear_identifier,
-                    )
-                    .await
-                    {
-                        error!(
-                            identifier = %mapping.linear_identifier,
-                            error = %e,
-                            "Failed to sync comments to Discord"
-                        );
+        // so we check all tracked issues, but less frequently.
+        if last_comment_sync.elapsed() >= comment_interval {
+            last_comment_sync = Instant::now();
+
+            match db::get_all_tracked_issues(&pool).await {
+                Ok(mappings) => {
+                    for mapping in &mappings {
+                        if let Err(e) = sync_linear_comments_to_discord(
+                            &http,
+                            &pool,
+                            &linear,
+                            &mapping.linear_issue_id,
+                            &mapping.linear_identifier,
+                        )
+                        .await
+                        {
+                            error!(
+                                identifier = %mapping.linear_identifier,
+                                error = %e,
+                                "Failed to sync comments to Discord"
+                            );
+                        }
                     }
                 }
-            }
-            Err(e) => {
-                error!(error = %e, "Failed to fetch tracked issues for comment sync");
+                Err(e) => {
+                    error!(error = %e, "Failed to fetch tracked issues for comment sync");
+                }
             }
         }
 
