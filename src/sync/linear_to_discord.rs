@@ -6,6 +6,59 @@ use crate::db;
 use crate::error::AppError;
 use crate::linear::client::LinearClient;
 
+const DISCORD_MAX_MESSAGE_CHARS: usize = 2000;
+
+fn split_for_discord(message: &str) -> Vec<String> {
+    if message.chars().count() <= DISCORD_MAX_MESSAGE_CHARS {
+        return vec![message.to_string()];
+    }
+
+    let mut chunks: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut current_len = 0usize;
+
+    let push_chunk = |chunks: &mut Vec<String>, current: &mut String, current_len: &mut usize| {
+        if !current.is_empty() {
+            chunks.push(std::mem::take(current));
+            *current_len = 0;
+        }
+    };
+
+    for line in message.split_inclusive('\n') {
+        let line_len = line.chars().count();
+
+        if line_len > DISCORD_MAX_MESSAGE_CHARS {
+            push_chunk(&mut chunks, &mut current, &mut current_len);
+
+            let mut buf = String::new();
+            let mut buf_len = 0usize;
+            for c in line.chars() {
+                if buf_len == DISCORD_MAX_MESSAGE_CHARS {
+                    chunks.push(std::mem::take(&mut buf));
+                    buf_len = 0;
+                }
+                buf.push(c);
+                buf_len += 1;
+            }
+            current = buf;
+            current_len = buf_len;
+            continue;
+        }
+
+        if current_len + line_len > DISCORD_MAX_MESSAGE_CHARS {
+            push_chunk(&mut chunks, &mut current, &mut current_len);
+        }
+        current.push_str(line);
+        current_len += line_len;
+    }
+
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+
+    chunks
+}
+
 pub async fn sync_linear_to_discord(
     http: &Http,
     pool: &SqlitePool,
@@ -83,15 +136,19 @@ pub async fn sync_linear_comments_to_discord(
             comment.body.replace('\n', "\n> ")
         );
 
-        let sent = channel.say(http, &message).await?;
+        let chunks = split_for_discord(&message);
+        let mut first_message_id: Option<String> = None;
+        for chunk in &chunks {
+            let sent = channel.say(http, chunk).await?;
+            if first_message_id.is_none() {
+                first_message_id = Some(sent.id.to_string());
+            }
+        }
 
-        db::insert_synced_comment(
-            pool,
-            &comment.id,
-            linear_issue_id,
-            &sent.id.to_string(),
-        )
-        .await?;
+        let discord_message_id = first_message_id
+            .ok_or_else(|| AppError::Internal("Comment produced no Discord messages".into()))?;
+
+        db::insert_synced_comment(pool, &comment.id, linear_issue_id, &discord_message_id).await?;
 
         info!(
             comment_id = %comment.id,
