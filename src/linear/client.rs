@@ -179,6 +179,67 @@ impl LinearClient {
         Ok(results)
     }
 
+    /// Fetch current state for a specific set of issue IDs in a single query.
+    /// Issues that no longer exist or aren't visible are silently omitted from the result.
+    pub async fn get_issues_by_ids(
+        &self,
+        ids: &[String],
+    ) -> Result<Vec<LinearIssueStatus>, AppError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let query = r#"
+            query IssuesByIds($ids: [ID!]!) {
+                issues(filter: { id: { in: $ids } }, first: 250) {
+                    nodes {
+                        id
+                        identifier
+                        state {
+                            name
+                            type
+                        }
+                        updatedAt
+                    }
+                }
+            }
+        "#;
+
+        let variables = json!({ "ids": ids });
+        let data = self.execute(query, variables).await?;
+        let nodes = data["issues"]["nodes"]
+            .as_array()
+            .ok_or_else(|| AppError::LinearApi("Missing issues.nodes".into()))?;
+
+        let mut results = Vec::new();
+        for node in nodes {
+            let id = node["id"].as_str().unwrap_or_default().to_string();
+            let identifier = node["identifier"].as_str().unwrap_or_default().to_string();
+            let status_name = node["state"]["name"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+            let status_type = node["state"]["type"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+            let updated_at = node["updatedAt"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+
+            results.push(LinearIssueStatus {
+                id,
+                identifier,
+                status_name,
+                status_type,
+                updated_at,
+            });
+        }
+
+        Ok(results)
+    }
+
     /// Fetch comments for a specific issue, sorted by creation time.
     pub async fn get_issue_comments(
         &self,

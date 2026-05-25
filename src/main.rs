@@ -83,6 +83,15 @@ async fn main() -> anyhow::Result<()> {
         error!(error = %e, "Backfill failed, continuing with live sync");
     }
 
+    // Reconcile Discord thread archive state with current Linear status. Catches up
+    // issues that completed before this feature existed and self-heals on every restart.
+    info!("Reconciling Discord thread archive state...");
+    if let Err(e) =
+        sync::reconcile::reconcile_archive_state(&discord_http, &pool, &linear_client).await
+    {
+        error!(error = %e, "Reconcile pass failed, continuing with live sync");
+    }
+
     // Spawn Linear status poller for all teams
     let team_ids = config.unique_team_ids();
     let poller_handle = tokio::spawn(linear::poller::run_poller(
