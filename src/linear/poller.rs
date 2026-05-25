@@ -85,6 +85,7 @@ pub async fn run_poller(
                                 &issue.id,
                                 &issue.identifier,
                                 &issue.status_name,
+                                &issue.status_type,
                             )
                             .await
                             {

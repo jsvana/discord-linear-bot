@@ -32,6 +32,7 @@ pub struct LinearIssueStatus {
     pub id: String,
     pub identifier: String,
     pub status_name: String,
+    pub status_type: String,
     pub updated_at: String,
 }
 
@@ -131,6 +132,7 @@ impl LinearClient {
                         identifier
                         state {
                             name
+                            type
                         }
                         updatedAt
                     }
@@ -156,6 +158,10 @@ impl LinearClient {
                 .as_str()
                 .unwrap_or_default()
                 .to_string();
+            let status_type = node["state"]["type"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
             let updated_at = node["updatedAt"]
                 .as_str()
                 .unwrap_or_default()
@@ -165,6 +171,7 @@ impl LinearClient {
                 id,
                 identifier,
                 status_name,
+                status_type,
                 updated_at,
             });
         }

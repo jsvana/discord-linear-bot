@@ -1,4 +1,4 @@
-use serenity::all::{ChannelId, Http};
+use serenity::all::{ChannelId, EditThread, Http};
 use sqlx::SqlitePool;
 use tracing::{info, warn};
 
@@ -65,6 +65,7 @@ pub async fn sync_linear_to_discord(
     linear_issue_id: &str,
     identifier: &str,
     new_status: &str,
+    new_status_type: &str,
 ) -> Result<(), AppError> {
     // Look up Discord thread from mapping
     let mapping = db::get_mapping_by_linear_issue(pool, linear_issue_id)
@@ -82,6 +83,22 @@ pub async fn sync_linear_to_discord(
 
     channel.say(http, &message).await?;
 
+    // Mirror Linear completion state to Discord thread: archive when completed,
+    // unarchive on any other state so reopens in Linear bring the post back.
+    let should_archive = new_status_type == "completed";
+    if let Err(e) = channel
+        .edit_thread(http, EditThread::new().archived(should_archive))
+        .await
+    {
+        warn!(
+            linear_issue_id,
+            identifier,
+            archived = should_archive,
+            error = %e,
+            "Failed to update Discord thread archive state"
+        );
+    }
+
     // Update status cache
     db::upsert_cached_status(pool, linear_issue_id, new_status).await?;
 
@@ -89,6 +106,8 @@ pub async fn sync_linear_to_discord(
         linear_issue_id,
         identifier,
         status = new_status,
+        status_type = new_status_type,
+        archived = should_archive,
         "Posted status update to Discord"
     );
 
