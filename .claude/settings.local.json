@@ -3,7 +3,34 @@
     "allow": [
       "Bash(linear auth whoami:*)",
       "Bash(linear issue list:*)",
-      "Bash(linear team:*)"
+      "Bash(linear team:*)",
+      "Bash(gh release:*)",
+      "Bash(rustup target:*)",
+      "Bash(cargo install:*)",
+      "Bash(cross build:*)",
+      "Bash(gh run:*)",
+      "Bash(shasum -a 256 /tmp/dlb-release/*.tar.gz)",
+      "Bash(ansible-playbook site.yml --tags discord-linear-bot --vault-password-file ~/ansible_pass)",
+      "Read(//private/tmp/**)",
+      "Bash(shasum -a 256 discord-linear-bot-v0.3.2-x86_64-linux.tar.gz)",
+      "Read(//Users/jsvana/projects/ansible-blackpearl/**)",
+      "Bash(ansible-playbook site.yml --tags discord-linear-bot --ask-vault-pass)",
+      "Bash(cargo build *)",
+      "Bash(cargo fmt *)",
+      "Bash(cargo clippy *)",
+      "Bash(curl -sL -o discord-linear-bot-v0.3.3-x86_64-linux.tar.gz https://github.com/jsvana/discord-linear-bot/releases/download/v0.3.3/discord-linear-bot-v0.3.3-x86_64-linux.tar.gz)",
+      "Bash(shasum -a 256 discord-linear-bot-v0.3.3-x86_64-linux.tar.gz)",
+      "Bash(git -C /Users/jsvana/projects/discord-linear-bot log --oneline -20)",
+      "Bash(git -C /Users/jsvana/projects/discord-linear-bot pull --rebase)",
+      "Bash(git -C /Users/jsvana/projects/discord-linear-bot status)",
+      "Bash(./scripts/release.sh 0.3.4)",
+      "Bash(ssh blackpearl *)",
+      "Bash(./scripts/release.sh 0.3.5)",
+      "Bash(ssh blackpearl.home.lan \"sudo -n journalctl -u discord-linear-bot --since '2 minutes ago' --no-pager\")",
+      "Bash(git restore *)",
+      "Bash(ssh *)",
+      "Bash(python3 *)",
+      "mcp__claude_ai_Linear__list_issues"
     ]
   }
 }
