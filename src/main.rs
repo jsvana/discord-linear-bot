@@ -37,8 +37,8 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // SQLite pool + migrations
-    let connect_options = SqliteConnectOptions::from_str(&config.database_url)?
-        .create_if_missing(true);
+    let connect_options =
+        SqliteConnectOptions::from_str(&config.database_url)?.create_if_missing(true);
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
         .connect_with(connect_options)
@@ -92,15 +92,13 @@ async fn main() -> anyhow::Result<()> {
         error!(error = %e, "Reconcile pass failed, continuing with live sync");
     }
 
-    // Spawn Linear status poller for all teams
-    let team_ids = config.unique_team_ids();
+    // Spawn Linear status poller (handles status sync, comment sync, and the periodic
+    // Discord→Linear thread reconcile for posts whose issue creation was missed or failed).
     let poller_handle = tokio::spawn(linear::poller::run_poller(
         discord_http,
         pool,
         linear_client,
-        team_ids,
-        config.poll_interval_secs,
-        config.comment_poll_interval_secs,
+        config,
     ));
 
     // Run Discord gateway + poller concurrently

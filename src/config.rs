@@ -43,6 +43,7 @@ pub struct Config {
     pub database_url: String,
     pub poll_interval_secs: u64,
     pub comment_poll_interval_secs: u64,
+    pub thread_reconcile_interval_secs: u64,
 }
 
 impl Config {
@@ -68,6 +69,10 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(300),
+            thread_reconcile_interval_secs: env::var("THREAD_RECONCILE_INTERVAL_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(600),
         })
     }
 
