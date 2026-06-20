@@ -162,10 +162,7 @@ impl LinearClient {
                 .as_str()
                 .unwrap_or_default()
                 .to_string();
-            let updated_at = node["updatedAt"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string();
+            let updated_at = node["updatedAt"].as_str().unwrap_or_default().to_string();
 
             results.push(LinearIssueStatus {
                 id,
@@ -223,10 +220,7 @@ impl LinearClient {
                 .as_str()
                 .unwrap_or_default()
                 .to_string();
-            let updated_at = node["updatedAt"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string();
+            let updated_at = node["updatedAt"].as_str().unwrap_or_default().to_string();
 
             results.push(LinearIssueStatus {
                 id,
@@ -241,10 +235,7 @@ impl LinearClient {
     }
 
     /// Fetch comments for a specific issue, sorted by creation time.
-    pub async fn get_issue_comments(
-        &self,
-        issue_id: &str,
-    ) -> Result<Vec<LinearComment>, AppError> {
+    pub async fn get_issue_comments(&self, issue_id: &str) -> Result<Vec<LinearComment>, AppError> {
         let query = r#"
             query IssueComments($issueId: String!) {
                 issue(id: $issueId) {
@@ -275,10 +266,7 @@ impl LinearClient {
         for node in nodes {
             let id = node["id"].as_str().unwrap_or_default().to_string();
             let body = node["body"].as_str().unwrap_or_default().to_string();
-            let created_at = node["createdAt"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string();
+            let created_at = node["createdAt"].as_str().unwrap_or_default().to_string();
             let author_name = node["user"]["displayName"]
                 .as_str()
                 .unwrap_or("Unknown")
@@ -325,10 +313,8 @@ impl LinearClient {
         let data = self.execute(query, variables).await?;
         let upload_data = &data["fileUpload"]["uploadFile"];
 
-        let headers: Vec<UploadHeader> = serde_json::from_value(
-            upload_data["headers"].clone(),
-        )
-        .map_err(|e| AppError::LinearApi(format!("Failed to parse upload headers: {e}")))?;
+        let headers: Vec<UploadHeader> = serde_json::from_value(upload_data["headers"].clone())
+            .map_err(|e| AppError::LinearApi(format!("Failed to parse upload headers: {e}")))?;
 
         Ok(UploadFile {
             upload_url: upload_data["uploadUrl"]
@@ -403,7 +389,7 @@ impl LinearClient {
         #[derive(Serialize)]
         struct GraphQLRequest<'a> {
             query: &'a str,
-            variables: Value,
+            variables: &'a Value,
         }
 
         #[derive(Deserialize)]
@@ -417,16 +403,79 @@ impl LinearClient {
             message: String,
         }
 
-        let response: GraphQLResponse = self
-            .client
-            .post("https://api.linear.app/graphql")
-            .header("Authorization", &self.api_key)
-            .header("Content-Type", "application/json")
-            .json(&GraphQLRequest { query, variables })
-            .send()
-            .await?
-            .json()
-            .await?;
+        // Transient failures (host DNS blips, Linear edge 5xx, rate limits) are
+        // retried with exponential backoff. Non-retryable errors (4xx other than
+        // 429, GraphQL-level errors) fail immediately.
+        const MAX_ATTEMPTS: u32 = 3;
+        let body = GraphQLRequest {
+            query,
+            variables: &variables,
+        };
+
+        let mut attempt = 0;
+        let text = loop {
+            attempt += 1;
+
+            let send_result = self
+                .client
+                .post("https://api.linear.app/graphql")
+                .header("Authorization", &self.api_key)
+                .header("Content-Type", "application/json")
+                .json(&body)
+                .send()
+                .await;
+
+            let response = match send_result {
+                Ok(response) => response,
+                Err(e) => {
+                    if attempt < MAX_ATTEMPTS {
+                        let delay = backoff(attempt);
+                        warn!(
+                            attempt,
+                            error = %e,
+                            delay_secs = delay.as_secs(),
+                            "Linear request failed to send, retrying"
+                        );
+                        tokio::time::sleep(delay).await;
+                        continue;
+                    }
+                    return Err(e.into());
+                }
+            };
+
+            let status = response.status();
+
+            // 5xx and 429 are worth retrying; everything else is decided now.
+            if (status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS)
+                && attempt < MAX_ATTEMPTS
+            {
+                let delay = backoff(attempt);
+                warn!(
+                    attempt,
+                    %status,
+                    delay_secs = delay.as_secs(),
+                    "Linear returned retryable status, retrying"
+                );
+                tokio::time::sleep(delay).await;
+                continue;
+            }
+
+            let text = response.text().await?;
+
+            if !status.is_success() {
+                let snippet: String = text.chars().take(500).collect();
+                return Err(AppError::LinearApi(format!("HTTP {status}: {snippet}")));
+            }
+
+            break text;
+        };
+
+        let response: GraphQLResponse = serde_json::from_str(&text).map_err(|e| {
+            let snippet: String = text.chars().take(500).collect();
+            AppError::LinearApi(format!(
+                "Failed to decode response body: {e}; body: {snippet}"
+            ))
+        })?;
 
         if let Some(errors) = response.errors {
             let messages: Vec<String> = errors.into_iter().map(|e| e.message).collect();
@@ -439,4 +488,9 @@ impl LinearClient {
             .data
             .ok_or_else(|| AppError::LinearApi("No data in response".into()))
     }
+}
+
+/// Exponential backoff for retry attempt N (1-indexed): 1s, 2s, 4s, ...
+fn backoff(attempt: u32) -> std::time::Duration {
+    std::time::Duration::from_secs(2u64.pow(attempt.saturating_sub(1)))
 }
